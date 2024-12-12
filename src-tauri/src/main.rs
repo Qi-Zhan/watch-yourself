@@ -2,9 +2,25 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::thread;
+use std::time::Duration;
 use tauri::{CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tauri_plugin_positioner::{Position, WindowExt};
+
+fn record() {
+    let _ = thread::spawn(|| loop {
+        let output = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg("tell application \"System Events\" to tell (first process whose frontmost is true) to return {name, (name of window 1 as string)}")
+                .output()
+                .expect("failed to execute process");
+        println!("output: {:?}", output);
+        thread::sleep(Duration::from_secs(1));
+    });
+}
 
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quit").accelerator("Cmd+Q");
@@ -57,14 +73,17 @@ fn main() {
                 _ => {}
             }
         })
-        .on_window_event(|event| match event.event() {
-            tauri::WindowEvent::Focused(is_focused) => {
+        .on_window_event(|event| {
+            if let tauri::WindowEvent::Focused(is_focused) = event.event() {
                 // detect click outside of the focused window and hide the app
                 if !is_focused {
                     event.window().hide().unwrap();
                 }
             }
-            _ => {}
+        })
+        .setup(|app| {
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
